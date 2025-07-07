@@ -1,0 +1,9 @@
+[submodule "benchmarks/ext/cxxopts"]
+	path = benchmarks/ext/cxxopts
+	url = https://github.com/jarro2783/cxxopts.git
+[submodule "benchmarks/ext/portaudio"]
+	path = benchmarks/ext/portaudio
+	url = https://github.com/PortAudio/portaudio.git
+[submodule "benchmarks/ext/rubberband"]
+	path = benchmarks/ext/rubberband
+	url = https://github.com/breakfastquay/rubberband.git

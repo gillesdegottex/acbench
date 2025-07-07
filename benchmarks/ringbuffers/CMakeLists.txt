@@ -30,11 +30,15 @@ else()
     message(STATUS "  Benchmarks coverage is disabled. (ACBENCH_BENCHMARKS_COVERAGE=OFF)")
 endif()
 
+find_package(Boost)
+
 acbench_print_expected_compilation_flags()
 
 add_executable(benchmark_ringbuffers main.cpp)
 
+target_include_directories(benchmark_ringbuffers PRIVATE "${Boost_INCLUDE_DIRS}")
 target_include_directories(benchmark_ringbuffers PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../..")
+target_include_directories(benchmark_ringbuffers PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../ext/portaudio/include/")
 target_include_directories(benchmark_ringbuffers PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../ext/portaudio/src/common/")
 target_sources(benchmark_ringbuffers PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../ext/portaudio/src/common/pa_ringbuffer.c")
 target_link_libraries(benchmark_ringbuffers PRIVATE jack)

@@ -304,7 +304,7 @@ class MethodPortaudio : public Method {
         // TODO(GD) Needs to be power of 2 for Portaudio
         pa_data = new float[max_size];
         if(std::log2(max_size) != std::floor(std::log2(max_size))) {
-            DOUT << "ERROR: max_size (=" << max_size << ") needs to be power of 2 for Portaudio." << std::endl;
+            std::cerr << "ERROR: max_size (=" << max_size << ") needs to be power of 2 for Portaudio." << std::endl;
             std::exit(1);
         }
         PaUtil_InitializeRingBuffer(&pa_buffer, sizeof(float), max_size, pa_data);
