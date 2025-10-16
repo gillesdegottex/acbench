@@ -9,13 +9,19 @@
 #ifndef ACBENCH_RINGBUFFER_H_
 #define ACBENCH_RINGBUFFER_H_
 
-// By default, acbench::ringbuffer is thread-safe
-//     Public member functions are thread-safe, but private and protected ones are not.
-//     You can always call the _nolock(.) non-thread-safe version of the functions.
-//     (if they don't exists, it means there was no need to lock the mutex in the thread-safe version anyway)
+/** Thread-safety:
+    * By default, the functions are thread-safe.
+    * WARNING: Except for element-wise accessors (ex. operator[](int)), which are _not_ thread-safe.
+      Those must be called within a .lock() and .unlock() block to be thread-safe.
+      It is done so bcs [] operator is usually used in a loop, and locking the mutex would be too expensive.
+    * Public member functions are thread-safe, but protected ones are not.
+    * You can always call the _nolock(.) non-thread-safe version of each function.
+      (if it doesn't exists, it means there was no need to lock the mutex in the thread-safe version anyway)
 
-// On system that don't have mutex or are single-threaded by nature (ex. Arduino), you can make acbench::ringbuffernon-thread-safe by defining ACBENCH_NOMULTITHREADED before including this file.
-#ifndef ACBENCH_NOMULTITHREADED
+    * On systems that don't have mutex or are single-threaded by nature (ex. Arduino), you can make the whole ringbuffer not thread-safe by defining ACBENCH_NOT_THREAD_SAFE before including this file.
+**/
+
+#ifndef ACBENCH_NOT_THREAD_SAFE
     #define ACBENCH_MULTITHREADED  // Move before the #includes or make it an option per ringbuffer
 #endif
 
@@ -96,7 +102,7 @@ namespace acbench {
             return *this;
         }
         //! Always loose the data
-        // TODO rename to reserve(.)
+        // TODO rename to reserve(.) to follow the naming convention of the STL
         inline void resize_allocation(int size_max) {
             ACBENCH_MUTEX_GUARD
             if (size_max == m_size_max) {
@@ -127,6 +133,10 @@ namespace acbench {
         inline void unlock() {
             m_mutex.unlock();
         }
+        //! This is usefull to build a guard object out of the ringbuffer's mutex.
+        inline std::mutex& mutex() const {
+            return const_cast<std::mutex&>(m_mutex);
+        }
         #else
         inline void lock() {
         }
@@ -137,14 +147,16 @@ namespace acbench {
         inline value_type* data() const {
             return m_data;  // Atomic, no need of locked mutex
         }
-        // TODO rename to capacity(.)
+        // TODO rename to capacity(.) to follow the naming convention of the STL
         inline int size_max() const {
             return m_size_max;          // Atomic, no need of locked mutex
         }
         inline int size() const {
             return m_size;  // Atomic, no need of locked mutex
         }
-        inline int front_index() const {
+        // The index of the first element is always 0, as for any circular buffer.
+        // So this function returns the index of `front` within the allocated memory, ie. relative to data()
+        inline int front_data_index() const {
             assert(m_size > 0);
             return m_front;  // Atomic, no need of locked mutex
         }
@@ -153,7 +165,9 @@ namespace acbench {
             ACBENCH_MUTEX_GUARD
             return m_data[m_front];
         }
-        inline int back_index() const {
+        // The index of the last element is always size()-1, as for any circular buffer.
+        // So this is the index of `back` within the allocated memory, ie. relative to data()
+        inline int back_data_index() const {
             ACBENCH_MUTEX_GUARD
             int back = m_end - 1;
             if (back < 0)
@@ -168,19 +182,17 @@ namespace acbench {
                 back = m_size_max-1;
             return m_data[back];
         }
-        inline int max_size() const {
-            return size_max;  // Atomic, no need of locked mutex
-        }
         inline bool empty() const {
             return m_size == 0;  // Atomic, no need of locked mutex
         }
+
+        //! WARNING: Not thread-safe
         value_type operator[](int n) const {
-            ACBENCH_MUTEX_GUARD  // TODO Makes it very slow
             assert(n < m_size);
             return m_data[(m_front+n)%m_size_max];
         }
+        //! WARNING: Not thread-safe
         value_type& operator[](int n) {
-            ACBENCH_MUTEX_GUARD  // TODO Makes it very slow
             assert(n < m_size);
             return m_data[(m_front+n)%m_size_max];
         }
