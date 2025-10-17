@@ -9,7 +9,16 @@
 #ifndef ACBENCH_RINGBUFFER_H_
 #define ACBENCH_RINGBUFFER_H_
 
-/** Thread-safety:
+/**
+
+Allocation:
+    Only 2 functions can allocate memory:
+        resize_allocation(.) which always allocates a new memory block and clear any previous data.
+        reserve(.) which allocates only if the new size is greater than the current one, and preserves the previous data.
+
+    The destructor always deallocate the memory.
+
+Thread-safety:
     * By default, the functions are thread-safe.
     * WARNING: Except for element-wise accessors (ex. operator[](int)), which are _not_ thread-safe.
       Those must be called within a .lock() and .unlock() block to be thread-safe.
@@ -19,6 +28,7 @@
       (if it doesn't exists, it means there was no need to lock the mutex in the thread-safe version anyway)
 
     * On systems that don't have mutex or are single-threaded by nature (ex. Arduino), you can make the whole ringbuffer not thread-safe by defining ACBENCH_NOT_THREAD_SAFE before including this file.
+
 **/
 
 #ifndef ACBENCH_NOT_THREAD_SAFE
@@ -101,8 +111,8 @@ namespace acbench {
             this->push_back_nolock(rb);
             return *this;
         }
-        //! Always loose the data
-        // TODO rename to reserve(.) to follow the naming convention of the STL
+        //! Always loose the data.
+        //  (it is purposely not called reserve(.), because its behavior is different, see below).
         inline void resize_allocation(int size_max) {
             ACBENCH_MUTEX_GUARD
             if (size_max == m_size_max) {
@@ -116,6 +126,21 @@ namespace acbench {
 
             this->clear_nolock();
         }
+        // A more standard allocation function with behavior equivalent to std::vector::reserve()
+        inline void reserve(int size_max) {
+            ACBENCH_MUTEX_GUARD
+            if (size_max <= m_size_max)
+                return;
+
+            value_type* new_data = new value_type[size_max];  // TODO(GD) Force contiguous memory
+            memory_copy_nolock(new_data, m_data, m_size);
+
+            delete[] m_data;
+            m_data = new_data;
+
+            m_size_max = size_max;
+        }
+
         //! Does keep the allocation
         inline void clear() {
             ACBENCH_MUTEX_GUARD
@@ -153,9 +178,11 @@ namespace acbench {
         inline value_type* data() const {
             return m_data;  // Atomic, no need of locked mutex
         }
-        // TODO rename to capacity(.) to follow the naming convention of the STL
-        inline int size_max() const {
+        inline int capacity() const {
             return m_size_max;          // Atomic, no need of locked mutex
+        }
+        inline int size_max() const {
+            return capacity();          // Atomic, no need of locked mutex
         }
         inline int size() const {
             return m_size;  // Atomic, no need of locked mutex
