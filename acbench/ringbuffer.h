@@ -137,10 +137,16 @@ namespace acbench {
         inline std::mutex& mutex() const {
             return const_cast<std::mutex&>(m_mutex);
         }
+        inline bool is_thread_safe() const {
+            return true;
+        }
         #else
         inline void lock() {
         }
         inline void unlock() {
+        }
+        inline bool is_thread_safe() const {
+            return false;
         }
         #endif
 
