@@ -28,7 +28,7 @@ We start with ringbuffers, then simple vectors, then let's see.
 
 If you want to use the built-in `acbench::ringbuffer` class in your project, copy paste the file `ringbuffer.h` wherever you like.
 
-The only function that changes any allocation is `resize_allocate(int)`, which is only called by the user. Copy constructor is forbidden. Empty constructor does nothing. There is no other constructor. Assignement operator is allowed.
+The only 3 functions that changes any allocation is `resize_allocate(int)`, `reserve(int)` which implements the STL behavior and the destructor. Those 3 functions are only called by the user, there is no implicit calls for them in any other functions. Copy constructor is forbidden. Empty constructor does nothing. There is no other constructor. Assignement operator is allowed.
 
     acbench::ringbuffer<float> rb;
     rb.resize_allocation(44100)  // Allocation for a 1s buffer at 44.1kHz
