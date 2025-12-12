@@ -111,7 +111,8 @@ namespace acbench {
             this->push_back_nolock(rb);
             return *this;
         }
-        //! Always loose the data.
+        //! Allocate a new memory block and clear any previous data.
+        //   * Always loose the data and reset the container to an empty state.
         //  (it is purposely not called reserve(.), because its behavior is different, see below).
         inline void resize_allocation(int size_max) {
             ACBENCH_MUTEX_GUARD
@@ -127,6 +128,8 @@ namespace acbench {
             this->clear_nolock();
         }
         // A more standard allocation function with behavior equivalent to std::vector::reserve()
+        //  * It does nothing if the new size is less than or equal to the current size.
+        //  * Otherwise, it increases the allocation and preserves the previous data.
         inline void reserve(int size_max) {
             ACBENCH_MUTEX_GUARD
             if (size_max <= m_size_max)
