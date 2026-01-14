@@ -67,6 +67,23 @@ void rb_push_back_ringbuffer(test_t& test, ref_t& ref, ringbuffer3_t& rb) {
         ref.push_back(rb[i]);
 }
 
+void rb_push_front_const(test_t& test, ref_t& ref, float value) {
+    test.push_front(value);
+    ref.push_front(value);
+}
+
+void rb_push_front_const(test_t& test, ref_t& ref, float value, int n) {
+    test.push_front(value, n);
+    for (int i=0; i < n; ++i)
+        ref.push_front(value);
+}
+
+void rb_push_front_array(test_t& test, ref_t& ref, float* array, int n) {
+    test.push_front(array, n);
+    for (int i=n-1; i >= 0; --i) 
+        ref.push_front(array[i]);
+}
+
 void rb_pop_front(test_t& test, ref_t& ref) {
     test.pop_front();
     ref.pop_front();
@@ -462,6 +479,479 @@ TEST_CASE("ringbuffer_pop_front_array") {
 
     delete[] data_poped;
     delete[] data;
+}
+
+TEST_CASE("ringbuffer_push_front_single") {
+    int chunk_size = 100;
+
+    test_t test;
+    ref_t ref;
+    rb_init(test, ref, chunk_size);
+
+    rb_push_front_const(test, ref, 1.0f);
+    REQUIRE(test.size() == 1);
+    REQUIRE(test.front() == 1.0f);
+    rb_require_equals(test, ref);
+
+    rb_push_front_const(test, ref, 2.0f);
+    REQUIRE(test.size() == 2);
+    REQUIRE(test.front() == 2.0f);
+    REQUIRE(test[0] == 2.0f);
+    REQUIRE(test[1] == 1.0f);
+    rb_require_equals(test, ref);
+
+    rb_clear(test, ref);
+    rb_push_back_rand(test, ref, 50);
+    REQUIRE(test.size() == 50);
+    rb_push_front_const(test, ref, 99.0f);
+    REQUIRE(test.size() == 51);
+    REQUIRE(test.front() == 99.0f);
+    rb_require_equals(test, ref);
+}
+
+TEST_CASE("ringbuffer_push_front_cst") {
+    int chunk_size = 100;
+
+    test_t test;
+    ref_t ref;
+    rb_init(test, ref, chunk_size);
+
+    rb_push_front_const(test, ref, 0.0f, chunk_size);
+    REQUIRE(test.size() == chunk_size);
+    rb_require_equals(test, ref);
+
+    rb_clear(test, ref);
+    rb_push_front_const(test, ref, 0.0f, 75);
+    REQUIRE(test.size() == 75);
+    rb_pop_front(test, ref, 50);
+    REQUIRE(test.size() == 25);
+    rb_push_front_const(test, ref, 1.0f, 50);
+    REQUIRE(test.size() == 75);
+    rb_require_equals(test, ref);
+
+    // Test wrapping around when pushing front
+    rb_clear(test, ref);
+    rb_push_back_rand(test, ref, 75);
+    REQUIRE(test.size() == 75);
+    rb_pop_front(test, ref, 50);
+    REQUIRE(test.size() == 25);
+    rb_push_front_const(test, ref, 2.0f, 50);
+    REQUIRE(test.size() == 75);
+    rb_require_equals(test, ref);
+
+    // Shortcuts
+    rb_push_front_const(test, ref, 1.0f, 0);
+    rb_push_front_const(test, ref, 1.0f, 1);
+    rb_pop_front(test, ref, 0);
+
+    rb_require_equals(test, ref);
+}
+
+TEST_CASE("ringbuffer_push_front_array") {
+    int chunk_size = 100;
+
+    test_t test;
+    ref_t ref;
+    rb_init(test, ref, chunk_size);
+
+    float* data = new float[chunk_size];
+    for (int i=0; i < chunk_size; ++i)
+        data[i] = acbench::rand_uniform_continuous_01<float>();
+
+    rb_push_front_array(test, ref, data, chunk_size);
+    rb_require_equals(test, ref);
+
+    // Verify the order is correct (array[0] becomes front element)
+    for (int i=0; i < chunk_size; ++i)
+        REQUIRE(test[i] == data[i]);
+
+    // Test wrapping around when pushing front array
+    rb_clear(test, ref);
+    rb_push_back_rand(test, ref, 75);
+    REQUIRE(test.size() == 75);
+    rb_pop_front(test, ref, 50);
+    REQUIRE(test.size() == 25);
+    rb_push_front_array(test, ref, data, 50);
+    REQUIRE(test.size() == 75);
+    rb_require_equals(test, ref);
+
+    // Test when buffer wraps around during push_front
+    rb_clear(test, ref);
+    rb_push_back_rand(test, ref, chunk_size);
+    REQUIRE(test.size() == chunk_size);
+    rb_pop_front(test, ref, 90);
+    REQUIRE(test.size() == 10);
+    rb_push_front_array(test, ref, data, 50);
+    REQUIRE(test.size() == 60);
+    rb_require_equals(test, ref);
+
+    // Test shortcuts
+    rb_push_front_array(test, ref, data, 0);
+
+    rb_require_equals(test, ref);
+
+    delete[] data;
+}
+
+TEST_CASE("ringbuffer_push_front_wrapping") {
+    int chunk_size = 100;
+
+    test_t test;
+    ref_t ref;
+    rb_init(test, ref, chunk_size);
+
+    // Fill buffer, then pop from front to create wrap condition
+    rb_push_back_rand(test, ref, chunk_size);
+    REQUIRE(test.size() == chunk_size);
+    rb_pop_front(test, ref, 80);
+    REQUIRE(test.size() == 20);
+
+    // Push front with values that will wrap around
+    rb_push_front_const(test, ref, 5.0f, 60);
+    REQUIRE(test.size() == 80);
+    rb_require_equals(test, ref);
+
+    // Verify front values
+    for (int i=0; i < 60; ++i)
+        REQUIRE(test[i] == 5.0f);
+
+    // Test array push_front with wrapping
+    rb_clear(test, ref);
+    rb_push_back_rand(test, ref, chunk_size);
+    rb_pop_front(test, ref, 70);
+    REQUIRE(test.size() == 30);
+
+    float* data = new float[50];
+    for (int i=0; i < 50; ++i)
+        data[i] = static_cast<float>(i);
+
+    rb_push_front_array(test, ref, data, 50);
+    REQUIRE(test.size() == 80);
+    rb_require_equals(test, ref);
+
+    // Verify the array was inserted correctly (array[0] becomes front)
+    for (int i=0; i < 50; ++i)
+        REQUIRE(test[i] == data[i]);
+
+    delete[] data;
+}
+
+TEST_CASE("ringbuffer_push_front_mixed") {
+    int chunk_size = 100;
+
+    test_t test;
+    ref_t ref;
+    rb_init(test, ref, chunk_size);
+
+    // Mix push_front and push_back operations
+    rb_push_front_const(test, ref, 1.0f);
+    rb_push_back_const(test, ref, 2.0f);
+    rb_push_front_const(test, ref, 3.0f);
+    rb_push_back_const(test, ref, 4.0f);
+    REQUIRE(test.size() == 4);
+    REQUIRE(test.front() == 3.0f);
+    REQUIRE(test.back() == 4.0f);
+    rb_require_equals(test, ref);
+
+    // Test with larger operations
+    rb_clear(test, ref);
+    rb_push_front_const(test, ref, 10.0f, 30);
+    rb_push_back_const(test, ref, 20.0f, 30);
+    REQUIRE(test.size() == 60);
+    rb_require_equals(test, ref);
+
+    // Verify front and back
+    for (int i=0; i < 30; ++i)
+        REQUIRE(test[i] == 10.0f);
+    for (int i=30; i < 60; ++i)
+        REQUIRE(test[i] == 20.0f);
+}
+
+TEST_CASE("ringbuffer_reserve") {
+    int chunk_size = 50;
+    int larger_size = 100;
+
+    test_t test;
+    ref_t ref;
+    rb_init(test, ref, chunk_size);
+
+    rb_push_back_rand(test, ref, 30);
+    REQUIRE(test.size() == 30);
+    REQUIRE(test.size_max() == chunk_size);
+
+    // Reserve should preserve data when increasing size
+    test.reserve(larger_size);
+    REQUIRE(test.size_max() == larger_size);
+    REQUIRE(test.size() == 30);
+    rb_require_equals(test, ref);
+
+    // Reserve should do nothing when size is smaller or equal
+    int current_max = test.size_max();
+    test.reserve(chunk_size);
+    REQUIRE(test.size_max() == current_max);
+    REQUIRE(test.size() == 30);
+    rb_require_equals(test, ref);
+
+    // Reserve should preserve data after wrapping
+    rb_clear(test, ref);
+    rb_push_back_rand(test, ref, chunk_size);
+    rb_pop_front(test, ref, 20);
+    rb_push_back_rand(test, ref, 20);
+    REQUIRE(test.size() == chunk_size);
+    
+    test.reserve(larger_size);
+    REQUIRE(test.size_max() == larger_size);
+    REQUIRE(test.size() == chunk_size);
+    rb_require_equals(test, ref);
+}
+
+TEST_CASE("ringbuffer_back") {
+    int chunk_size = 100;
+
+    test_t test;
+    ref_t ref;
+    rb_init(test, ref, chunk_size);
+
+    rb_push_back_const(test, ref, 1.0f);
+    REQUIRE(test.back() == 1.0f);
+    REQUIRE(test.back() == ref.back());
+
+    rb_push_back_const(test, ref, 2.0f);
+    REQUIRE(test.back() == 2.0f);
+    REQUIRE(test.back() == ref.back());
+
+    rb_push_back_rand(test, ref, 50);
+    REQUIRE(test.back() == ref.back());
+
+    // Test back after wrapping
+    rb_pop_front(test, ref, 30);
+    rb_push_back_rand(test, ref, 30);
+    REQUIRE(test.back() == ref.back());
+    rb_require_equals(test, ref);
+}
+
+TEST_CASE("ringbuffer_empty") {
+    int chunk_size = 100;
+
+    test_t test;
+    ref_t ref;
+    rb_init(test, ref, chunk_size);
+
+    REQUIRE(test.empty() == true);
+    REQUIRE(test.size() == 0);
+
+    rb_push_back_const(test, ref, 1.0f);
+    REQUIRE(test.empty() == false);
+    REQUIRE(test.size() == 1);
+
+    test.clear();
+    REQUIRE(test.empty() == true);
+    REQUIRE(test.size() == 0);
+
+    rb_push_back_rand_single(test, 50);
+    REQUIRE(test.empty() == false);
+    test.pop_front(50);
+    REQUIRE(test.empty() == true);
+}
+
+TEST_CASE("ringbuffer_data_indices") {
+    int chunk_size = 100;
+
+    test_t test;
+    ref_t ref;
+    rb_init(test, ref, chunk_size);
+
+    rb_push_back_const(test, ref, 1.0f);
+    REQUIRE(test.front_data_index() >= 0);
+    REQUIRE(test.front_data_index() < chunk_size);
+    REQUIRE(test.back_data_index() >= 0);
+    REQUIRE(test.back_data_index() < chunk_size);
+
+    // After wrapping, indices should still be valid
+    rb_push_back_rand(test, ref, chunk_size - 1);
+    rb_pop_front(test, ref, 50);
+    rb_push_back_rand(test, ref, 50);
+    REQUIRE(test.front_data_index() >= 0);
+    REQUIRE(test.front_data_index() < chunk_size);
+    REQUIRE(test.back_data_index() >= 0);
+    REQUIRE(test.back_data_index() < chunk_size);
+
+    // Verify data access through indices
+    int front_idx = test.front_data_index();
+    int back_idx = test.back_data_index();
+    REQUIRE(test.data()[front_idx] == test.front());
+    REQUIRE(test.data()[back_idx] == test.back());
+}
+
+TEST_CASE("ringbuffer_pop_back_single") {
+    int chunk_size = 100;
+
+    test_t test;
+    ref_t ref;
+    rb_init(test, ref, chunk_size);
+
+    rb_push_back_const(test, ref, 1.0f);
+    rb_push_back_const(test, ref, 2.0f);
+    rb_push_back_const(test, ref, 3.0f);
+
+    float val = test.pop_back();
+    REQUIRE(val == 3.0f);
+    ref.pop_back();
+    rb_require_equals(test, ref);
+
+    val = test.pop_back();
+    REQUIRE(val == 2.0f);
+    ref.pop_back();
+    rb_require_equals(test, ref);
+
+    val = test.pop_back();
+    REQUIRE(val == 1.0f);
+    ref.pop_back();
+    rb_require_equals(test, ref);
+    REQUIRE(test.empty());
+
+    // Test with wrapping
+    rb_push_back_rand(test, ref, chunk_size);
+    rb_pop_front(test, ref, 50);
+    rb_push_back_rand(test, ref, 50);
+
+    val = test.pop_back();
+    ref.pop_back();
+    rb_require_equals(test, ref);
+
+    // Test multiple pop_back operations
+    for (int i = 0; i < 20; ++i) {
+        val = test.pop_back();
+        ref.pop_back();
+        rb_require_equals(test, ref);
+    }
+}
+
+TEST_CASE("ringbuffer_pop_back_multiple") {
+    int chunk_size = 100;
+
+    test_t test;
+    ref_t ref;
+    rb_init(test, ref, chunk_size);
+
+    rb_push_back_rand(test, ref, 50);
+    REQUIRE(test.size() == 50);
+
+    test.pop_back(10);
+    for (int i = 0; i < 10; ++i)
+        ref.pop_back();
+    REQUIRE(test.size() == 40);
+    rb_require_equals(test, ref);
+
+    test.pop_back(30);
+    for (int i = 0; i < 30; ++i)
+        ref.pop_back();
+    REQUIRE(test.size() == 10);
+    rb_require_equals(test, ref);
+
+    // Test pop_back more than available (should clear)
+    test.pop_back(100);
+    ref.clear();
+    REQUIRE(test.size() == 0);
+    rb_require_equals(test, ref);
+
+    // Test with wrapping
+    rb_push_back_rand(test, ref, chunk_size);
+    rb_pop_front(test, ref, 60);
+    rb_push_back_rand(test, ref, 60);
+    REQUIRE(test.size() == chunk_size);
+
+    test.pop_back(40);
+    for (int i = 0; i < 40; ++i)
+        ref.pop_back();
+    REQUIRE(test.size() == 60);
+    rb_require_equals(test, ref);
+
+    // Test edge cases
+    test.pop_back(0);  // Should do nothing
+    rb_require_equals(test, ref);
+
+    test.pop_back(-1);  // Should do nothing
+    rb_require_equals(test, ref);
+}
+
+TEST_CASE("ringbuffer_pop_front_to_ringbuffer") {
+    int chunk_size = 100;
+
+    test_t rb1;
+    test_t rb2;
+    ref_t ref1;
+    ref_t ref2;
+    rb_init(rb1, ref1, chunk_size);
+    rb_init(rb2, ref2, chunk_size);
+
+    rb_push_back_rand(rb1, ref1, 50);
+    REQUIRE(rb1.size() == 50);
+
+    int n_poped = rb1.pop_front(rb2);
+    REQUIRE(n_poped == 50);
+    REQUIRE(rb1.size() == 0);
+    REQUIRE(rb2.size() == 50);
+    rb_require_equals(rb2, ref1);
+
+    // Test with wrapping
+    rb_clear(rb1, ref1);
+    rb_clear(rb2, ref2);
+    rb_push_back_rand(rb1, ref1, chunk_size);
+    rb_pop_front(rb1, ref1, 60);
+    rb_push_back_rand(rb1, ref1, 60);
+    REQUIRE(rb1.size() == chunk_size);
+
+    n_poped = rb1.pop_front(rb2);
+    REQUIRE(n_poped == chunk_size);
+    REQUIRE(rb1.size() == 0);
+    REQUIRE(rb2.size() == chunk_size);
+    rb_require_equals(rb2, ref1);
+
+    // Test partial pop
+    rb_clear(rb1, ref1);
+    rb_clear(rb2, ref2);
+    rb_push_back_rand(rb1, ref1, 30);
+    rb_push_back_rand(rb2, ref2, 20);
+
+    n_poped = rb1.pop_front(rb2);
+    REQUIRE(n_poped == 30);
+    REQUIRE(rb1.size() == 0);
+    REQUIRE(rb2.size() == 50);
+    
+    // Verify rb2 contains original rb2 data followed by rb1 data
+    for (int i = 0; i < 20; ++i)
+        REQUIRE(rb2[i] == ref2[i]);
+    for (int i = 0; i < 30; ++i)
+        REQUIRE(rb2[20 + i] == ref1[i]);
+}
+
+TEST_CASE("ringbuffer_pop_back_wrapping") {
+    int chunk_size = 100;
+
+    test_t test;
+    ref_t ref;
+    rb_init(test, ref, chunk_size);
+
+    // Fill buffer and create wrap condition
+    rb_push_back_rand(test, ref, chunk_size);
+    rb_pop_front(test, ref, 80);
+    rb_push_back_rand(test, ref, 80);
+    REQUIRE(test.size() == chunk_size);
+
+    // Pop back with wrapping
+    test.pop_back(60);
+    for (int i = 0; i < 60; ++i)
+        ref.pop_back();
+    REQUIRE(test.size() == 40);
+    rb_require_equals(test, ref);
+
+    // Continue popping
+    test.pop_back(30);
+    for (int i = 0; i < 30; ++i)
+        ref.pop_back();
+    REQUIRE(test.size() == 10);
+    rb_require_equals(test, ref);
 }
 
 
