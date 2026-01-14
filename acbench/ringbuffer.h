@@ -318,6 +318,93 @@ namespace acbench {
             push_back_nolock(array, array_size);
         }
 
+        inline void push_front_nolock(const value_type v) {
+
+            memory_check_size_nolock(1);
+
+            --m_front;
+            if (m_front < 0)
+                m_front = m_size_max - 1;
+
+            m_data[m_front] = v;
+
+            ++m_size;
+        }
+        inline void push_front(const value_type v) {
+            ACBENCH_MUTEX_GUARD
+            push_front_nolock(v);
+        }
+        inline void push_front_nolock(const value_type value, int nb_values) {
+            if (nb_values <= 0)             // Ignore pushing no values
+                return;
+
+            memory_check_size_nolock(nb_values);
+
+            m_front -= nb_values;
+            if (m_front < 0)
+                m_front += m_size_max;
+
+            if (m_front+nb_values <= m_size_max) {
+
+                value_type* pdata = m_data+m_front;
+                for (int k=0; k < nb_values; ++k)
+                    *pdata++ = value;
+
+            } else {
+                // Need to slice the array into two segments
+
+                // 1st segment: m_front:m_size_max-1
+                int seg1size = m_size_max - m_front;
+                value_type* pdata = m_data+m_front;
+                for (int k=0; k < seg1size; ++k)
+                    *pdata++ = value;
+
+                // 2nd segment: 0:nb_values-seg1size
+                int seg2size = nb_values - seg1size;
+                pdata = m_data;
+                for (int k=0; k < seg2size; ++k)
+                    *pdata++ = value;
+            }
+
+            m_size += nb_values;
+        }
+        inline void push_front(const value_type value, int nb_values) {
+            ACBENCH_MUTEX_GUARD
+            push_front_nolock(value, nb_values);
+        }
+        inline void push_front_nolock(const value_type* array, int array_size) {
+            if (array_size <= 0)             // Ignore push of empty buffers
+                return;
+
+            memory_check_size_nolock(array_size);
+
+            m_front -= array_size;
+            if (m_front < 0)
+                m_front += m_size_max;
+
+            if (m_front+array_size <= m_size_max) {
+                // No need to slice it
+                memory_copy_nolock(m_data+m_front, array, array_size);
+
+            } else {
+                // Need to slice the array into two segments
+
+                // 1st segment: m_front:m_size_max-1
+                int seg1size = m_size_max - m_front;
+                memory_copy_nolock(m_data+m_front, array, seg1size);
+
+                // 2nd segment: 0:array_size-seg1size
+                int seg2size = array_size - seg1size;
+                memory_copy_nolock(m_data, array+seg1size, seg2size);
+            }
+
+            m_size += array_size;
+        }
+        inline void push_front(const value_type* array, int array_size) {
+            ACBENCH_MUTEX_GUARD
+            push_front_nolock(array, array_size);
+        }
+
         inline void push_back_nolock(const ringbuffer<value_type>& rb) {
             if (rb.size() == 0)          // Ignore push of empty ringbuffers
                 return;
