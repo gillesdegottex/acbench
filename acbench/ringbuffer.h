@@ -36,8 +36,8 @@ Thread-safety:
 #endif
 
 
-#include <cstring>  // For std::memcpy(.)
 #include <cassert>  // For assert(.)
+#include <cstring>  // For std::memcpy(.)
 
 #ifdef ACBENCH_MULTITHREADED
 #include <mutex>
@@ -220,6 +220,26 @@ namespace acbench {
         }
         inline bool empty() const {
             return m_size == 0;  // Atomic, no need of locked mutex
+        }
+
+        /// Copy data to a contiguous external buffer.
+        /// Caller must ensure `out` has at least size() elements allocated.
+        /// Does not modify the ringbuffer.
+        inline void copy_to_contiguous(value_type* out) const {
+            ACBENCH_MUTEX_GUARD
+            if (m_size == 0) {
+                return;
+            }
+
+            if (m_front + m_size <= m_size_max) {
+                // Data is contiguous
+                std::memcpy(out, m_data + m_front, sizeof(value_type) * m_size);
+            } else {
+                // Data wraps around
+                int seg1size = m_size_max - m_front;
+                std::memcpy(out, m_data + m_front, sizeof(value_type) * seg1size);
+                std::memcpy(out + seg1size, m_data, sizeof(value_type) * (m_size - seg1size));
+            }
         }
 
         //! WARNING: Not thread-safe
