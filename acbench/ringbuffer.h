@@ -281,6 +281,8 @@ namespace acbench {
                 for (int k=0; k < nb_values; ++k)
                     *pdata++ = value;
                 m_end += nb_values;
+                if (m_end >= m_size_max)
+                    m_end = 0;
 
             } else {
                 // Need to slice the array into two segments
@@ -316,6 +318,8 @@ namespace acbench {
                 // No need to slice it
                 memory_copy_nolock(m_data+m_end, array, array_size);
                 m_end += array_size;
+                if (m_end >= m_size_max)
+                    m_end = 0;
 
             } else {
                 // Need to slice the array into two segments
@@ -453,6 +457,8 @@ namespace acbench {
                 }
 
                 m_end += rb.size();
+                if (m_end >= m_size_max)
+                    m_end = 0;
 
             } else {
                 // The destination segment is made of two continuous segments

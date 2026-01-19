@@ -954,4 +954,131 @@ TEST_CASE("ringbuffer_pop_back_wrapping") {
     rb_require_equals(test, ref);
 }
 
+// Scenario: push_back up to max capacity, pop_front all, then push_back again.
+TEST_CASE("ringbuffer_push_back_segment_m_end_wrap_bug") {
+    int chunk_size = 10;
+
+    // Test 1: Using push_back(rb, start, size) - tests line 559
+    {
+        test_t test;
+        test.resize_allocation(chunk_size);
+        REQUIRE(test.size() == 0);
+        REQUIRE(test.capacity() == chunk_size);
+
+        // Create source ringbuffer with exactly chunk_size elements
+        test_t src;
+        src.resize_allocation(chunk_size);
+        for (int i = 0; i < chunk_size; ++i)
+            src.push_back(static_cast<float>(i));
+        REQUIRE(src.size() == chunk_size);
+
+        // Push back the entire source segment - this triggers the bug
+        // m_end starts at 0, we push chunk_size elements
+        // After: m_end should be 0 (wrapped), not chunk_size (out of bounds)
+        test.push_back(src, 0, chunk_size);
+        REQUIRE(test.size() == chunk_size);
+
+        // Verify values
+        for (int i = 0; i < chunk_size; ++i)
+            REQUIRE(test[i] == static_cast<float>(i));
+
+        // Pop front all elements using the array version
+        float* poped = new float[chunk_size];
+        int n_poped = test.pop_front(poped, chunk_size);
+        REQUIRE(n_poped == chunk_size);
+        REQUIRE(test.size() == 0);
+
+        // Verify popped values
+        for (int i = 0; i < chunk_size; ++i)
+            REQUIRE(poped[i] == static_cast<float>(i));
+
+        delete[] poped;
+
+        // Now push_back again - this is where the bug manifests!
+        // If m_end == m_size_max (bug), this will access m_data[m_size_max] out of bounds
+        test.push_back(42.0f);
+        REQUIRE(test.size() == 1);
+        REQUIRE(test.front() == 42.0f);
+        REQUIRE(test.back() == 42.0f);
+
+        // Push more to verify state is consistent
+        test.push_back(43.0f);
+        test.push_back(44.0f);
+        REQUIRE(test.size() == 3);
+        REQUIRE(test[0] == 42.0f);
+        REQUIRE(test[1] == 43.0f);
+        REQUIRE(test[2] == 44.0f);
+    }
+
+    // Test 2: Using push_back(rb) without segment - tests line 455
+    {
+        test_t test;
+        test.resize_allocation(chunk_size);
+
+        test_t src;
+        src.resize_allocation(chunk_size);
+        for (int i = 0; i < chunk_size; ++i)
+            src.push_back(static_cast<float>(i + 100));
+
+        test.push_back(src);
+        REQUIRE(test.size() == chunk_size);
+
+        float* poped = new float[chunk_size];
+        test.pop_front(poped, chunk_size);
+        REQUIRE(test.size() == 0);
+
+        delete[] poped;
+
+        // Push again - would crash if m_end wasn't wrapped
+        test.push_back(99.0f);
+        REQUIRE(test.size() == 1);
+        REQUIRE(test.front() == 99.0f);
+    }
+
+    // Test 3: Using push_back(array, size) - tests line 318
+    {
+        test_t test;
+        test.resize_allocation(chunk_size);
+
+        float* data = new float[chunk_size];
+        for (int i = 0; i < chunk_size; ++i)
+            data[i] = static_cast<float>(i + 200);
+
+        test.push_back(data, chunk_size);
+        REQUIRE(test.size() == chunk_size);
+
+        float* poped = new float[chunk_size];
+        test.pop_front(poped, chunk_size);
+        REQUIRE(test.size() == 0);
+
+        // Push again
+        test.push_back(88.0f);
+        REQUIRE(test.size() == 1);
+        REQUIRE(test.front() == 88.0f);
+
+        delete[] data;
+        delete[] poped;
+    }
+
+    // Test 4: Using push_back(value, count) - tests line 283
+    {
+        test_t test;
+        test.resize_allocation(chunk_size);
+
+        test.push_back(7.0f, chunk_size);
+        REQUIRE(test.size() == chunk_size);
+
+        float* poped = new float[chunk_size];
+        test.pop_front(poped, chunk_size);
+        REQUIRE(test.size() == 0);
+
+        delete[] poped;
+
+        // Push again
+        test.push_back(77.0f);
+        REQUIRE(test.size() == 1);
+        REQUIRE(test.front() == 77.0f);
+    }
+}
+
 
