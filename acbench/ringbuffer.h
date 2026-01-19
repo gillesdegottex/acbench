@@ -572,6 +572,8 @@ namespace acbench {
                 // No need to slice it
                 memory_copy_nolock(array, m_data+m_front, n);
                 m_front += n;
+                if (m_front >= m_size_max)
+                    m_front = 0;
 
             } else {
                 // Need to slice the array into two segments
