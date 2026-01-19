@@ -525,6 +525,110 @@ namespace acbench {
             push_back_nolock(rb);
         }
 
+        //! Push back only a segment of the ringbuffer given as argument.
+        inline void push_back(const ringbuffer<value_type>& rb, int start, int size) {
+            if (rb.size() == 0)     return;  // Ignore push of empty ringbuffers
+            if (size == 0)          return;  // Ignore push of empty data
+            if (start >= rb.size()) return;  // Ignore push of empty data
+
+            if (start+size > rb.size())
+                size = rb.size() - start;
+            int rb_size = size;
+
+            int rb_front = rb.m_front + start;
+            if (rb_front >= rb.m_size_max)
+                rb_front -= rb.m_size_max;
+
+            memory_check_size_nolock(rb_size);
+
+            if (m_end+rb_size <= m_size_max) {
+                // The destination segment is continuous
+
+                // Now let's see the source segment(s)
+                if (rb_front+rb_size <= rb.m_size_max) {
+                    // The source segment is continuous...
+                    // ... easiest game of my life
+                    memory_copy_nolock(m_data+m_end, rb.m_data+rb_front, rb_size);
+
+                } else {
+                    // The source segment is made of two continuous segments
+
+                    // 1st segment
+                    int seg1size = rb.m_size_max - rb_front;
+                    memory_copy_nolock(m_data+m_end, rb.m_data+rb_front, seg1size);
+
+                    // 2nd segment
+                    int seg2size = rb_size - seg1size;
+                    memory_copy_nolock(m_data+m_end+seg1size, rb.m_data, seg2size);
+                }
+
+                m_end += rb_size;
+                if (m_end >= m_size_max)
+                    m_end = 0;
+
+            } else {
+                // The destination segment is made of two continuous segments
+
+                if (rb_front+rb_size <= rb.m_size_max) {
+                    // The source segment is continuous...
+
+                    // 1st segment
+                    int seg1size = m_size_max - m_end;
+                    memory_copy_nolock(m_data+m_end, rb.m_data+rb_front, seg1size);
+
+                    // 2nd segment
+                    int seg2size = rb_size - seg1size;
+                    memory_copy_nolock(m_data, rb.m_data+rb_front+seg1size, seg2size);
+
+                } else {
+                    // The source segment is also made of two continuous segments...
+                    // ... worst game of my life.
+
+                    // Let's check if the source's break point comes before or after the destination's max size.
+                    if ((rb.size_max()-rb_front) < (m_size_max-m_end)) {
+                        // the source's break point comes before the destination's max size...
+                        // .. handle the 3 resulting segments
+
+                        // 1st segment
+                        int seg1size = rb.m_size_max - rb_front;
+                        memory_copy_nolock(m_data+m_end, rb.m_data+rb_front, seg1size);
+
+                        // 2nd segment
+                        int seg2size = (m_size_max-m_end) - seg1size;
+                        memory_copy_nolock(m_data+m_end+seg1size, rb.m_data, seg2size);
+
+                        // 3rd segment
+                        int seg3size = rb_size - seg1size - seg2size;
+                        memory_copy_nolock(m_data, rb.m_data+seg2size, seg3size);
+
+                    } else {
+                        // the source's break point comes after or on the destination's max size...
+                        // .. handle the 3 resulting segments
+
+                        // 1st segment
+                        int seg1size = m_size_max - m_end;
+                        memory_copy_nolock(m_data+m_end, rb.m_data+rb_front, seg1size);
+
+                        // 2nd segment
+                        int seg2size = (rb.m_size_max-rb_front) - seg1size;
+                        memory_copy_nolock(m_data, rb.m_data+rb_front+seg1size, seg2size);
+
+                        // 3rd segment
+                        int seg3size = rb_size - seg1size - seg2size;
+                        memory_copy_nolock(m_data+seg2size, rb.m_data, seg3size);
+                    }
+                }
+
+                // m_end = seg2size; // TODO Isn't it equal to this?
+                m_end += rb_size;
+                if (m_end >= m_size_max)
+                    m_end -= m_size_max;
+            }
+
+            m_size += rb_size;
+        }
+
+        
         inline value_type pop_front_nolock() {
             assert(m_size >= 1);
 
