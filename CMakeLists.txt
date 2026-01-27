@@ -111,7 +111,7 @@ if(ACBENCH_TESTS)
     if(CMAKE_COMPILER_IS_GNUCXX)
 
         # set(GCVOR_COMMAND_TESTS gcovr --gcov-executable gcov-5 -r .. --exclude-throw-branches --exclude-lines-by-pattern '.*GCOVR_EXCL_LINE.*|.*assert.*' --exclude-unreachable-branches -f ../acbench/ringbuffer.h)
-        set(GCVOR_COMMAND_TESTS gcovr -r .. --gcov-ignore-parse-errors --exclude-throw-branches --exclude-lines-by-pattern '.*GCOVR_EXCL_LINE.*|.*assert.*' --exclude-unreachable-branches -f ../acbench/ringbuffer.h)
+        set(GCVOR_COMMAND_TESTS gcovr -r .. --exclude-throw-branches --exclude-lines-by-pattern '.*GCOVR_EXCL_LINE.*|.*assert.*' --exclude-unreachable-branches -f ../acbench/ringbuffer.h)
         add_custom_target(test_coverage
             DEPENDS ringbuffer_test
             COMMAND ./ringbuffer_test
@@ -119,6 +119,8 @@ if(ACBENCH_TESTS)
             COMMAND python3 --version
             COMMAND gcc --version
             COMMAND gcovr --version
+            COMMAND find _deps benchmarks -name "*.gcda" -delete 2>/dev/null || true
+            COMMAND find _deps benchmarks -name "*.gcno" -delete 2>/dev/null || true
             COMMAND ${GCVOR_COMMAND_TESTS} --html-details ringbuffer_test_coverage.html
             COMMAND ${GCVOR_COMMAND_TESTS} --json ringbuffer_test_coverage.json
             COMMAND ${GCVOR_COMMAND_TESTS} --json-summary ringbuffer_test_coverage.summary.json

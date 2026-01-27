@@ -96,7 +96,7 @@ namespace acbench {
             while (new_size_max < required_capacity)
                 new_size_max *= 2;
 
-            value_type* new_data = new value_type[new_size_max];
+            value_type* new_data = new value_type[new_size_max];  // GCOVR_EXCL_BR_LINE
 
             // Linearize existing data into new buffer
             if (m_size > 0) {
@@ -116,8 +116,8 @@ namespace acbench {
             m_size_max = new_size_max;
             m_front = 0;
             m_end = m_size;
-            if (m_end >= m_size_max)
-                m_end = 0;
+            if (m_end >= m_size_max)  // GCOVR_EXCL_BR_LINE - defensive
+                m_end = 0;  // GCOVR_EXCL_LINE - defensive, can't trigger with doubling
         }
 
         inline void memory_check_size_nolock(int nb_new_values) {
@@ -169,10 +169,10 @@ namespace acbench {
             if (size_max <= m_size_max)
                 return;
 
-            value_type* new_data = new value_type[size_max];  // TODO(GD) Force contiguous memory
+            value_type* new_data = new value_type[size_max];  // GCOVR_EXCL_BR_LINE // TODO(GD) Force contiguous memory
             memory_copy_nolock(new_data, m_data, m_size);
 
-            delete[] m_data;
+            delete[] m_data;  // GCOVR_EXCL_BR_LINE
             m_data = new_data;
 
             m_size_max = size_max;
@@ -185,7 +185,7 @@ namespace acbench {
             if (new_size_max == m_size_max)
                 return;  // Already minimal
 
-            value_type* new_data = new value_type[new_size_max];
+            value_type* new_data = new value_type[new_size_max];  // GCOVR_EXCL_BR_LINE
 
             // Linearize existing data into new buffer
             if (m_size > 0) {
@@ -200,7 +200,7 @@ namespace acbench {
                 }
             }
 
-            delete[] m_data;
+            delete[] m_data;  // GCOVR_EXCL_BR_LINE
             m_data = new_data;
             m_size_max = new_size_max;
             m_front = 0;
@@ -699,7 +699,7 @@ namespace acbench {
 
                 // m_end = seg2size; // TODO Isn't it equal to this?
                 m_end += rb_size;
-                if (m_end >= m_size_max)
+                if (m_end >= m_size_max)  // GCOVR_EXCL_BR_LINE - always true in this block
                     m_end -= m_size_max;
             }
 

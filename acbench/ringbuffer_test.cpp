@@ -1242,3 +1242,307 @@ TEST_CASE("ringbuffer_copy_to_contiguous") {
     REQUIRE(out[4] == 100.0f);
     REQUIRE(out[7] == 103.0f);
 }
+
+TEST_CASE("ringbuffer_dynamic_allocation_branch_coverage") {
+    // Test grow_allocation_nolock while loop (large capacity jump)
+    test_t test;
+    test.set_dynamic_allocation(true);
+
+    // Start from m_size_max=0, push 100 elements forces multiple doublings
+    // 0 -> 16 -> 32 -> 64 -> 128 (while loop runs multiple times)
+    float data[100];
+    for (int i = 0; i < 100; ++i)
+        data[i] = static_cast<float>(i);
+    test.push_back(data, 100);
+    REQUIRE(test.size() == 100);
+    REQUIRE(test.capacity() >= 100);
+
+    // Test grow with wrapped data
+    test.clear();
+    test.resize_allocation(8);
+    test.set_dynamic_allocation(true);
+    for (int i = 0; i < 8; ++i)
+        test.push_back(static_cast<float>(i));
+    test.pop_front(6);  // m_front=6, size=2, data wraps
+    for (int i = 0; i < 4; ++i)
+        test.push_back(static_cast<float>(10 + i));
+    // Now: 6 elements wrapped, trigger growth
+    test.push_back(data, 10);
+    REQUIRE(test.size() == 16);
+    REQUIRE(test[0] == 6.0f);
+    REQUIRE(test[1] == 7.0f);
+}
+
+TEST_CASE("ringbuffer_shrink_to_fit_branch_coverage") {
+    test_t test;
+
+    // Test early return when already minimal (size=1, capacity=1)
+    test.resize_allocation(1);
+    test.shrink_to_fit();  // Already minimal
+    REQUIRE(test.capacity() == 1);
+
+    // Test shrink when buffer is full (m_end wraps to 0)
+    test.resize_allocation(4);
+    for (int i = 0; i < 4; ++i)
+        test.push_back(static_cast<float>(i));
+    REQUIRE(test.size() == 4);
+    test.shrink_to_fit();  // Already at size, m_end should wrap
+    REQUIRE(test.capacity() == 4);
+    REQUIRE(test.size() == 4);
+    // Verify data intact after shrink
+    for (int i = 0; i < 4; ++i)
+        REQUIRE(test[i] == static_cast<float>(i));
+}
+
+TEST_CASE("ringbuffer_back_wrap_coverage") {
+    // Test back() and back_data_index() when m_end == 0 (wraps to size_max-1)
+    test_t test;
+    test.resize_allocation(4);
+
+    // Fill completely so m_end wraps to 0
+    for (int i = 0; i < 4; ++i)
+        test.push_back(static_cast<float>(i));
+    // Now m_end == 0, so back should be at index 3
+
+    REQUIRE(test.back() == 3.0f);
+    REQUIRE(test.back_data_index() == 3);
+}
+
+TEST_CASE("ringbuffer_push_front_value_wrap_coverage") {
+    // Test push_front(value, nb_values) with wrapping (sliced branch)
+    test_t test;
+    test.resize_allocation(8);
+
+    // Push some elements then pop to move m_front forward
+    for (int i = 0; i < 6; ++i)
+        test.push_back(static_cast<float>(i));
+    test.pop_front(4);  // m_front = 4, size = 2
+    // Elements at indices 4, 5
+
+    // Push front with enough values to wrap around
+    test.push_front(99.0f, 5);  // Should wrap: needs indices 4-1=3,2,1,0 and 7
+    REQUIRE(test.size() == 7);
+    for (int i = 0; i < 5; ++i)
+        REQUIRE(test[i] == 99.0f);
+    REQUIRE(test[5] == 4.0f);
+    REQUIRE(test[6] == 5.0f);
+}
+
+TEST_CASE("ringbuffer_push_front_array_wrap_coverage") {
+    // Test push_front(array, size) with wrapping (sliced branch)
+    test_t test;
+    test.resize_allocation(8);
+
+    // Push some elements then pop to move m_front forward
+    for (int i = 0; i < 6; ++i)
+        test.push_back(static_cast<float>(i));
+    test.pop_front(4);  // m_front = 4, size = 2
+
+    // Push front array that wraps around
+    float data[] = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f};
+    test.push_front(data, 5);
+    REQUIRE(test.size() == 7);
+    REQUIRE(test[0] == 10.0f);
+    REQUIRE(test[4] == 50.0f);
+    REQUIRE(test[5] == 4.0f);
+    REQUIRE(test[6] == 5.0f);
+}
+
+TEST_CASE("ringbuffer_push_back_segment_wrap_coverage") {
+    // Test push_back(rb, start, size) with various wrapping scenarios
+    test_t src, dst;
+
+    // Scenario 1: source wrapped, destination continuous
+    src.resize_allocation(8);
+    for (int i = 0; i < 8; ++i)
+        src.push_back(static_cast<float>(i));
+    src.pop_front(5);  // m_front = 5, size = 3 (elements 5,6,7)
+    for (int i = 0; i < 4; ++i)
+        src.push_back(static_cast<float>(10 + i));  // elements 5,6,7,10,11,12,13 (wraps)
+
+    dst.resize_allocation(16);
+    dst.push_back(src, 0, 7);  // Copy all from wrapped source
+    REQUIRE(dst.size() == 7);
+    REQUIRE(dst[0] == 5.0f);
+    REQUIRE(dst[2] == 7.0f);
+    REQUIRE(dst[3] == 10.0f);
+    REQUIRE(dst[6] == 13.0f);
+
+    // Scenario 2: destination wraps
+    dst.clear();
+    dst.resize_allocation(12);
+    for (int i = 0; i < 8; ++i)
+        dst.push_back(static_cast<float>(i));
+    dst.pop_front(2);  // m_front = 2, size = 6, m_end = 8
+    // Now push enough to wrap destination
+
+    test_t src2;
+    src2.resize_allocation(8);
+    for (int i = 0; i < 5; ++i)
+        src2.push_back(static_cast<float>(100 + i));
+
+    dst.push_back(src2, 0, 5);  // destination wraps
+    REQUIRE(dst.size() == 11);
+    REQUIRE(dst[6] == 100.0f);
+    REQUIRE(dst[10] == 104.0f);
+}
+
+TEST_CASE("ringbuffer_push_back_segment_complex_wrap") {
+    // Test the complex 3-segment scenarios in push_back(rb, start, size)
+    test_t src, dst;
+
+    // Both source and destination wrap - source break before dest max
+    src.resize_allocation(8);
+    for (int i = 0; i < 8; ++i)
+        src.push_back(static_cast<float>(i));
+    src.pop_front(6);  // m_front = 6, size = 2
+    for (int i = 0; i < 5; ++i)
+        src.push_back(static_cast<float>(10 + i));  // 7 elements, wrapped
+
+    dst.resize_allocation(16);  // Larger to fit all elements
+    for (int i = 0; i < 10; ++i)
+        dst.push_back(static_cast<float>(100 + i));
+    dst.pop_front(2);  // m_front = 2, size = 8, m_end = 10
+    // Now push to make destination wrap with wrapped source
+
+    dst.push_back(src, 0, 7);
+    REQUIRE(dst.size() == 15);
+
+    // Verify integrity (first 8 from dst, then 7 from src)
+    REQUIRE(dst[0] == 102.0f);
+    REQUIRE(dst[7] == 109.0f);
+    REQUIRE(dst[8] == 6.0f);
+    REQUIRE(dst[9] == 7.0f);
+    REQUIRE(dst[10] == 10.0f);
+}
+
+TEST_CASE("ringbuffer_push_back_segment_edge_cases") {
+    test_t src, dst;
+
+    // Test line 613: start+size > rb.size() (truncation)
+    src.resize_allocation(8);
+    for (int i = 0; i < 5; ++i)
+        src.push_back(static_cast<float>(i));
+
+    dst.resize_allocation(16);
+    dst.push_back(src, 2, 100);  // Request more than available, should truncate to 3
+    REQUIRE(dst.size() == 3);
+    REQUIRE(dst[0] == 2.0f);
+    REQUIRE(dst[2] == 4.0f);
+
+    // Test line 618: rb_front wraps (start is beyond wrap point in wrapped source)
+    src.clear();
+    src.resize_allocation(8);
+    for (int i = 0; i < 8; ++i)
+        src.push_back(static_cast<float>(i));
+    src.pop_front(6);  // m_front = 6, size = 2 (elements 6,7)
+    for (int i = 0; i < 4; ++i)
+        src.push_back(static_cast<float>(10 + i));  // size = 6, wrapped
+    // src contains: [6, 7, 10, 11, 12, 13] with m_front=6, wraps at 8
+
+    dst.clear();
+    dst.resize_allocation(16);
+    dst.push_back(src, 3, 3);  // Start at index 3 (element 11), wraps rb_front
+    REQUIRE(dst.size() == 3);
+    REQUIRE(dst[0] == 11.0f);
+    REQUIRE(dst[1] == 12.0f);
+    REQUIRE(dst[2] == 13.0f);
+}
+
+TEST_CASE("ringbuffer_push_back_segment_source_break_after_dest") {
+    // Test lines 687-696: source break comes AFTER destination max size
+    // Need:
+    //   1. m_end+rb_size > m_size_max (dest wraps)
+    //   2. rb_front+rb_size > rb.m_size_max (source wraps)
+    //   3. (rb.size_max()-rb_front) >= (m_size_max-m_end) (source break >= dest break)
+    test_t src, dst;
+
+    // Create source with late wrap point
+    src.resize_allocation(8);
+    for (int i = 0; i < 8; ++i)
+        src.push_back(static_cast<float>(i));
+    src.pop_front(5);  // m_front = 5, size = 3
+    for (int i = 0; i < 4; ++i)
+        src.push_back(static_cast<float>(100 + i));
+    // src: m_front=5, size=7, data=[5,6,7,100,101,102,103]
+    // src.size_max - rb_front = 8 - 5 = 3 elements before wrap
+
+    // Create destination with early wrap point
+    dst.resize_allocation(8);
+    for (int i = 0; i < 7; ++i)
+        dst.push_back(static_cast<float>(200 + i));
+    dst.pop_front(5);  // m_front = 5, size = 2, m_end = 7
+    // dst: m_size_max - m_end = 8 - 7 = 1 element before wrap
+
+    // src break = 3, dst break = 1: 3 >= 1, so lines 687-696
+    // Push 5 elements: rb_front=5, rb_size=5, 5+5=10 > 8, source wraps
+    // m_end=7, rb_size=5, 7+5=12 > 8, dest wraps
+    dst.push_back(src, 0, 5);
+    REQUIRE(dst.size() == 7);
+    REQUIRE(dst[2] == 5.0f);
+    REQUIRE(dst[6] == 101.0f);
+}
+
+TEST_CASE("ringbuffer_push_back_segment_empty_cases") {
+    // Test lines 608-610: early returns
+    test_t src, dst;
+
+    dst.resize_allocation(16);
+    dst.push_back(1.0f);
+
+    // Line 608: rb.size() == 0
+    src.resize_allocation(8);  // Empty source
+    dst.push_back(src, 0, 5);
+    REQUIRE(dst.size() == 1);  // No change
+
+    // Line 609: size == 0
+    src.push_back(1.0f);
+    dst.push_back(src, 0, 0);
+    REQUIRE(dst.size() == 1);  // No change
+
+    // Line 610: start >= rb.size()
+    dst.push_back(src, 10, 5);  // start=10 > size=1
+    REQUIRE(dst.size() == 1);  // No change
+}
+
+TEST_CASE("ringbuffer_push_back_segment_m_end_wrap") {
+    // Test line 702: m_end wrapping after segment push
+    test_t src, dst;
+
+    src.resize_allocation(8);
+    for (int i = 0; i < 4; ++i)
+        src.push_back(static_cast<float>(i));
+
+    // Setup destination to wrap m_end after push
+    dst.resize_allocation(8);
+    for (int i = 0; i < 6; ++i)
+        dst.push_back(static_cast<float>(100 + i));
+    dst.pop_front(2);  // m_front=2, size=4, m_end=6
+
+    // Push 4 elements: m_end=6+4=10, 10 >= 8, so m_end -= 8 = 2
+    dst.push_back(src, 0, 4);
+    REQUIRE(dst.size() == 8);
+    REQUIRE(dst[0] == 102.0f);
+    REQUIRE(dst[7] == 3.0f);
+}
+
+TEST_CASE("ringbuffer_pop_back_wrap_coverage") {
+    // Test pop_back() when m_end == 0 (triggers wrap to m_size_max-1)
+    test_t test;
+    test.resize_allocation(4);
+
+    // Fill completely so m_end == 0
+    for (int i = 0; i < 4; ++i)
+        test.push_back(static_cast<float>(i));
+    REQUIRE(test.size() == 4);
+
+    // Pop back - m_end is 0, should wrap to 3
+    float val = test.pop_back();
+    REQUIRE(val == 3.0f);
+    REQUIRE(test.size() == 3);
+
+    // Pop again
+    val = test.pop_back();
+    REQUIRE(val == 2.0f);
+    REQUIRE(test.size() == 2);
+}
