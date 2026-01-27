@@ -1081,4 +1081,97 @@ TEST_CASE("ringbuffer_push_back_segment_m_end_wrap_bug") {
     }
 }
 
+TEST_CASE("ringbuffer_dynamic_allocation") {
+    // Test default state
+    test_t test;
+    REQUIRE(test.dynamic_allocation() == false);
 
+    // Test enabling dynamic allocation
+    test.set_dynamic_allocation(true);
+    REQUIRE(test.dynamic_allocation() == true);
+
+    // Test auto-growth from empty (no pre-allocation)
+    test.push_back(1.0f);
+    REQUIRE(test.size() == 1);
+    REQUIRE(test.capacity() >= 1);
+    REQUIRE(test[0] == 1.0f);
+
+    // Test auto-growth by pushing many values
+    int initial_capacity = test.capacity();
+    for (int i = 1; i < 100; ++i) {
+        test.push_back(static_cast<float>(i + 1));
+    }
+    REQUIRE(test.size() == 100);
+    REQUIRE(test.capacity() >= 100);
+    REQUIRE(test.capacity() > initial_capacity);
+
+    // Verify all data is preserved after multiple growths
+    for (int i = 0; i < 100; ++i) {
+        REQUIRE(test[i] == static_cast<float>(i + 1));
+    }
+
+    // Test growth with array push
+    test.clear();
+    float data[50];
+    for (int i = 0; i < 50; ++i)
+        data[i] = static_cast<float>(i * 10);
+
+    test.push_back(data, 50);
+    REQUIRE(test.size() == 50);
+    for (int i = 0; i < 50; ++i)
+        REQUIRE(test[i] == static_cast<float>(i * 10));
+
+    // Push more to trigger growth
+    test.push_back(data, 50);
+    REQUIRE(test.size() == 100);
+    for (int i = 0; i < 50; ++i) {
+        REQUIRE(test[i] == static_cast<float>(i * 10));
+        REQUIRE(test[i + 50] == static_cast<float>(i * 10));
+    }
+
+    // Test growth with wrapped data
+    test.clear();
+    test.resize_allocation(20);  // Small fixed size
+    test.set_dynamic_allocation(true);
+
+    // Fill and pop to create wrap condition
+    for (int i = 0; i < 15; ++i)
+        test.push_back(static_cast<float>(i));
+    test.pop_front(10);  // Now front is at index 10, size is 5
+    REQUIRE(test.size() == 5);
+
+    // Push enough to wrap around and then trigger growth
+    for (int i = 0; i < 30; ++i)
+        test.push_back(static_cast<float>(100 + i));
+    REQUIRE(test.size() == 35);
+    REQUIRE(test.capacity() >= 35);
+
+    // Verify data integrity (original 5 elements + 30 new)
+    for (int i = 0; i < 5; ++i)
+        REQUIRE(test[i] == static_cast<float>(10 + i));
+    for (int i = 0; i < 30; ++i)
+        REQUIRE(test[5 + i] == static_cast<float>(100 + i));
+
+    // Test disabling dynamic allocation
+    test.set_dynamic_allocation(false);
+    REQUIRE(test.dynamic_allocation() == false);
+}
+
+TEST_CASE("ringbuffer_dynamic_allocation_m_end_invariant") {
+    // Test that m_end < m_size_max invariant holds after growth
+    // Scenario: buffer is full with wrapped data, trigger growth that
+    // exactly fills the new space, then push one more
+
+    test_t test;
+    test.set_dynamic_allocation(true);
+    test.resize_allocation(1);
+
+    test.push_back(1.0f);
+    test.push_back(1.0f);
+
+    test.push_back(1.0f);
+}
+
+// TEST_CASE("test_test") {
+//     REQUIRE(false);
+// }

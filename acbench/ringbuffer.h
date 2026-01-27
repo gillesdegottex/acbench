@@ -65,6 +65,7 @@ namespace acbench {
         T* m_data = nullptr;
         int m_front = 0;
         int m_end = 0;  // One after the last element
+        bool m_dynamic_allocation = false;
 
         inline void destroy_nolock() {
             if ( m_data ) {
@@ -89,9 +90,42 @@ namespace acbench {
             std::memcpy(reinterpret_cast<void*>(pdest), reinterpret_cast<const void*>(psrc), sizeof(value_type)*static_cast<unsigned int>(size));
         }
 
+        inline void grow_allocation_nolock(int required_capacity) {
+            // Grow by at least doubling, or to the required capacity (whichever is larger)
+            int new_size_max = m_size_max > 0 ? m_size_max * 2 : 16;
+            while (new_size_max < required_capacity)
+                new_size_max *= 2;
+
+            value_type* new_data = new value_type[new_size_max];
+
+            // Linearize existing data into new buffer
+            if (m_size > 0) {
+                if (m_front + m_size <= m_size_max) {
+                    // Data is contiguous
+                    memory_copy_nolock(new_data, m_data + m_front, m_size);
+                } else {
+                    // Data wraps around
+                    int seg1size = m_size_max - m_front;
+                    memory_copy_nolock(new_data, m_data + m_front, seg1size);
+                    memory_copy_nolock(new_data + seg1size, m_data, m_size - seg1size);
+                }
+            }
+
+            delete[] m_data;
+            m_data = new_data;
+            m_size_max = new_size_max;
+            m_front = 0;
+            m_end = m_size;
+            if (m_end >= m_size_max)
+                m_end = 0;
+        }
+
         inline void memory_check_size_nolock(int nb_new_values) {
             (void)nb_new_values;
             assert(nb_new_values > 0);
+            if (m_dynamic_allocation && m_size + nb_new_values > m_size_max) {
+                grow_allocation_nolock(m_size + nb_new_values);
+            }
             assert(m_size+nb_new_values <= m_size_max);
         }
 
@@ -155,40 +189,48 @@ namespace acbench {
         }
 
         #ifdef ACBENCH_MULTITHREADED
-        inline void lock() {
-            m_mutex.lock();
-        }
-        inline void unlock() {
-            m_mutex.unlock();
-        }
-        //! This is usefull to build a guard object out of the ringbuffer's mutex.
-        inline std::mutex& mutex() const {
-            return const_cast<std::mutex&>(m_mutex);
-        }
-        inline bool is_thread_safe() const {
-            return true;
-        }
+            inline void lock() {
+                m_mutex.lock();
+            }
+            inline void unlock() {
+                m_mutex.unlock();
+            }
+            //! This is usefull to build a guard object out of the ringbuffer's mutex.
+            inline std::mutex& mutex() const {
+                return const_cast<std::mutex&>(m_mutex);
+            }
+            inline bool is_thread_safe() const {
+                return true;
+            }
         #else
-        inline void lock() {
-        }
-        inline void unlock() {
-        }
-        inline bool is_thread_safe() const {
-            return false;
-        }
+            inline void lock() {
+            }
+            inline void unlock() {
+            }
+            inline bool is_thread_safe() const {
+                return false;
+            }
         #endif
 
+        inline void set_dynamic_allocation(bool enable) {
+            ACBENCH_MUTEX_GUARD
+            m_dynamic_allocation = enable;
+        }
+        inline bool dynamic_allocation() const {
+            return m_dynamic_allocation;  // Atomic, no need of locked mutex
+        }
+
         inline value_type* data() const {
-            return m_data;  // Atomic, no need of locked mutex
+            return m_data;                // Atomic, no need of locked mutex
         }
         inline int capacity() const {
-            return m_size_max;          // Atomic, no need of locked mutex
+            return m_size_max;            // Atomic, no need of locked mutex
         }
         inline int size_max() const {
-            return capacity();          // Atomic, no need of locked mutex
+            return capacity();            // Atomic, no need of locked mutex
         }
         inline int size() const {
-            return m_size;  // Atomic, no need of locked mutex
+            return m_size;                // Atomic, no need of locked mutex
         }
         // The index of the first element is always 0, as for any circular buffer.
         // So this function returns the index of `front` within the allocated memory, ie. relative to data()
@@ -199,6 +241,7 @@ namespace acbench {
         inline value_type front() const {
             assert(m_size > 0);
             ACBENCH_MUTEX_GUARD
+            assert((m_front >=0) && (m_front < m_size_max));
             return m_data[m_front];
         }
         // The index of the last element is always size()-1, as for any circular buffer.
@@ -216,6 +259,7 @@ namespace acbench {
             int back = m_end - 1;
             if (back < 0)
                 back = m_size_max-1;
+            assert((back >=0) && (back < m_size_max));
             return m_data[back];
         }
         inline bool empty() const {
@@ -245,18 +289,20 @@ namespace acbench {
         //! WARNING: Not thread-safe
         value_type operator[](int n) const {
             assert(n < m_size);
+            assert(((m_front+n)%m_size_max >=0) && ((m_front+n)%m_size_max < m_size_max));
             return m_data[(m_front+n)%m_size_max];
         }
         //! WARNING: Not thread-safe
         value_type& operator[](int n) {
             assert(n < m_size);
+            assert(((m_front+n)%m_size_max >=0) && ((m_front+n)%m_size_max < m_size_max));
             return m_data[(m_front+n)%m_size_max];
         }
 
         inline void push_back_nolock(const value_type v) {
-
             memory_check_size_nolock(1);
 
+            assert((m_end >=0) && (m_end < m_size_max));
             m_data[m_end] = v;
 
             ++m_end;
@@ -350,6 +396,7 @@ namespace acbench {
             if (m_front < 0)
                 m_front = m_size_max - 1;
 
+            assert((m_front >=0) && (m_front < m_size_max));
             m_data[m_front] = v;
 
             ++m_size;
@@ -526,7 +573,7 @@ namespace acbench {
         }
 
         //! Push back only a segment of the ringbuffer given as argument.
-        inline void push_back(const ringbuffer<value_type>& rb, int start, int size) {
+        inline void push_back_nolock(const ringbuffer<value_type>& rb, int start, int size) {
             if (rb.size() == 0)     return;  // Ignore push of empty ringbuffers
             if (size == 0)          return;  // Ignore push of empty data
             if (start >= rb.size()) return;  // Ignore push of empty data
@@ -627,11 +674,15 @@ namespace acbench {
 
             m_size += rb_size;
         }
+        inline void push_back(const ringbuffer<value_type>& rb, int start, int size) {
+            ACBENCH_MUTEX_GUARD
+            push_back_nolock(rb, start, size);
+        }
 
-        
         inline value_type pop_front_nolock() {
             assert(m_size >= 1);
 
+            assert((m_front >=0) && (m_front < m_size_max));
             value_type value = m_data[m_front];
 
             ++m_front;
@@ -720,6 +771,7 @@ namespace acbench {
             int back = m_end - 1;
             if (back < 0)
                 back = m_size_max-1;
+            assert((back >=0) && (back < m_size_max));
             value_type value = m_data[back];
 
             --m_end;
