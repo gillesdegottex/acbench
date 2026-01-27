@@ -111,7 +111,7 @@ if(ACBENCH_TESTS)
     if(CMAKE_COMPILER_IS_GNUCXX)
 
         # set(GCVOR_COMMAND_TESTS gcovr --gcov-executable gcov-5 -r .. --exclude-throw-branches --exclude-lines-by-pattern '.*GCOVR_EXCL_LINE.*|.*assert.*' --exclude-unreachable-branches -f ../acbench/ringbuffer.h)
-        set(GCVOR_COMMAND_TESTS gcovr -r .. --exclude-throw-branches --exclude-lines-by-pattern '.*GCOVR_EXCL_LINE.*|.*assert.*' --exclude-unreachable-branches -f ../acbench/ringbuffer.h)
+        set(GCVOR_COMMAND_TESTS gcovr -r .. --gcov-ignore-parse-errors --exclude-throw-branches --exclude-lines-by-pattern '.*GCOVR_EXCL_LINE.*|.*assert.*' --exclude-unreachable-branches -f ../acbench/ringbuffer.h)
         add_custom_target(test_coverage
             DEPENDS ringbuffer_test
             COMMAND ./ringbuffer_test
