@@ -1208,3 +1208,37 @@ TEST_CASE("ringbuffer_shrink_to_fit") {
     REQUIRE(test[0] == 4.0f);
     REQUIRE(test[5] == 101.0f);
 }
+
+TEST_CASE("ringbuffer_copy_to_contiguous") {
+    test_t test;
+    test.resize_allocation(10);
+
+    // Test empty buffer
+    float out[10];
+    test.copy_to_contiguous(out);  // Should do nothing, no crash
+
+    // Test contiguous data
+    for (int i = 0; i < 5; ++i)
+        test.push_back(static_cast<float>(i));
+    test.copy_to_contiguous(out);
+    for (int i = 0; i < 5; ++i)
+        REQUIRE(out[i] == static_cast<float>(i));
+
+    // Test wrapped data
+    test.clear();
+    for (int i = 0; i < 10; ++i)
+        test.push_back(static_cast<float>(i));
+    test.pop_front(6);
+    for (int i = 0; i < 4; ++i)
+        test.push_back(static_cast<float>(100 + i));
+    // Now: 8 elements, wrapped [6,7,8,9,100,101,102,103]
+
+    REQUIRE(test.size() == 8);
+    test.copy_to_contiguous(out);
+    REQUIRE(out[0] == 6.0f);
+    REQUIRE(out[1] == 7.0f);
+    REQUIRE(out[2] == 8.0f);
+    REQUIRE(out[3] == 9.0f);
+    REQUIRE(out[4] == 100.0f);
+    REQUIRE(out[7] == 103.0f);
+}
