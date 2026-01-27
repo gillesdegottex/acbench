@@ -177,6 +177,37 @@ namespace acbench {
 
             m_size_max = size_max;
         }
+        // Shrink allocation to fit current size (minimum allocation of 1).
+        //  * Reallocates to max(m_size, 1) elements.
+        inline void shrink_to_fit() {
+            ACBENCH_MUTEX_GUARD
+            int new_size_max = m_size > 0 ? m_size : 1;
+            if (new_size_max == m_size_max)
+                return;  // Already minimal
+
+            value_type* new_data = new value_type[new_size_max];
+
+            // Linearize existing data into new buffer
+            if (m_size > 0) {
+                if (m_front + m_size <= m_size_max) {
+                    // Data is contiguous
+                    memory_copy_nolock(new_data, m_data + m_front, m_size);
+                } else {
+                    // Data wraps around
+                    int seg1size = m_size_max - m_front;
+                    memory_copy_nolock(new_data, m_data + m_front, seg1size);
+                    memory_copy_nolock(new_data + seg1size, m_data, m_size - seg1size);
+                }
+            }
+
+            delete[] m_data;
+            m_data = new_data;
+            m_size_max = new_size_max;
+            m_front = 0;
+            m_end = m_size;
+            if (m_end >= m_size_max)
+                m_end = 0;
+        }
 
         //! Does keep the allocation
         inline void clear() {

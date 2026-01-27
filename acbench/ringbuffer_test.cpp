@@ -1172,6 +1172,39 @@ TEST_CASE("ringbuffer_dynamic_allocation_m_end_invariant") {
     test.push_back(1.0f);
 }
 
-// TEST_CASE("test_test") {
-//     REQUIRE(false);
-// }
+TEST_CASE("ringbuffer_shrink_to_fit") {
+    test_t test;
+    test.resize_allocation(100);
+    REQUIRE(test.capacity() == 100);
+
+    // Shrink empty buffer -> minimum size 1
+    test.shrink_to_fit();
+    REQUIRE(test.capacity() == 1);
+
+    // Add elements and shrink
+    test.resize_allocation(50);
+    for (int i = 0; i < 10; ++i)
+        test.push_back(static_cast<float>(i));
+    REQUIRE(test.size() == 10);
+    REQUIRE(test.capacity() == 50);
+
+    test.shrink_to_fit();
+    REQUIRE(test.capacity() == 10);
+    for (int i = 0; i < 10; ++i)
+        REQUIRE(test[i] == static_cast<float>(i));
+
+    // Test with wrapped data
+    test.resize_allocation(8);
+    for (int i = 0; i < 8; ++i)
+        test.push_back(static_cast<float>(i));
+    test.pop_front(4);
+    for (int i = 0; i < 2; ++i)
+        test.push_back(static_cast<float>(100 + i));
+    // Now: 6 elements, wrapped
+
+    test.shrink_to_fit();
+    REQUIRE(test.capacity() == 6);
+    REQUIRE(test.size() == 6);
+    REQUIRE(test[0] == 4.0f);
+    REQUIRE(test[5] == 101.0f);
+}
