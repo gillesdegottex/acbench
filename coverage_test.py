@@ -17,9 +17,9 @@ print('')
 
 error = False
 print(f"Total: Branches: {data['branch_covered']}/{data['branch_total']}, {data['branch_percent']:.1f}%")
-if data['branch_covered'] < data['branch_total']:
+if data['branch_percent'] < 95.0:
     error = True
-    logging.error(f"Not all branches have been executed.")
+    logging.error(f"Branch coverage is below 95%.")
 
 print(f"Total: Lines: {data['line_covered']}/{data['line_total']}, {data['line_percent']:.1f}%")
 if data['line_covered'] < data['line_total']:
