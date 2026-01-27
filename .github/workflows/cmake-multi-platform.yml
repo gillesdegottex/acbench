@@ -113,6 +113,13 @@ jobs:
     # - name: Install gcovr
     #   run: sudo apt-get install -y gcovr
 
+    - name: switch to gcc-10 on linux
+      if: matrix.configurations.os == "ubuntu-latest"
+      run: |
+        sudo apt install gcc-10 g++-10
+        gcc --version
+        gcc-10 --version
+
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
