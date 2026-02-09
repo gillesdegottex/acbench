@@ -78,8 +78,8 @@ Benchmarking is done running the following commands
 
     cmake -DACBENCH_TESTS=OFF -DACBENCH_ASSERT=OFF -DACBENCH_TESTCOVERAGE=OFF ..
     mkdir run; cd run
-    ../ringbuffers/benchmark_ringbuffers -i 1000
-    python3 ../../ringbuffers/plot.py
+    ../benchmarks/ringbuffers/benchmark_ringbuffers -i 1000
+    python3 ../../benchmarks/ringbuffers/plot.py
 
 
 
