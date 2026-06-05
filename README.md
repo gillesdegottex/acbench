@@ -1,3 +1,5 @@
+WARNING: THIS REPO MOVED TO https://github.com/phoneshift/acbench
+
 ![workflow](https://github.com/gillesdegottex/acbench/actions/workflows/cmake-multi-platform.yml/badge.svg)
 
 Audio Containers Bench (ACBench)
